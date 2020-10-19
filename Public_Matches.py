@@ -47,7 +47,7 @@ def _is_parse_request_ready(job_id: JobId, api_key: Optional[ApiKey] = API_KEY) 
 def _get_parsed_match(match_id: MatchId, api_key: Optional[ApiKey] = API_KEY) -> Dict:
     response = requests.get(f"https://api.opendota.com/api/matches/{match_id}?api_key={api_key}")
     if response.status_code != 200:
-        raise ValueError(f"Cannot retrieve parsed match for job id {job_id}")
+        raise ValueError(f"Cannot retrieve parsed match for match id {match_id}")
     return response.json()
 
 
@@ -60,11 +60,9 @@ def _request_public_matches(data_size: int, api_key: ApiKey,
     matches_json: List[Dict] = []
     tmp_ids: List[MatchId] = []
     number_of_failures = 0
+    minimum_retrieved_match_id: Optional[MatchId] = None
 
-    first_response = _get_dota_public_match_info(api_key=api_key)
-    minimum_retrieved_match_id = first_response.json()["match_id"]
-
-    for i in range(data_size - 1):
+    for i in range(data_size):
         response = _get_dota_public_match_info(api_key=api_key, less_than_match_id=minimum_retrieved_match_id)
         if response.status_code != 200:
             on_error(response)
