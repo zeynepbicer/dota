@@ -1,1 +1,1 @@
-from .dataset_fetching import fetch_dota_dataset
+from .dataset_fetching import fetch_dota_dataset_serial, fetch_dota_dataset_concurrent
