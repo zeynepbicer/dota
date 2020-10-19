@@ -2,7 +2,8 @@
 .idea/
 venv/
 *.json
-_*
+env
+__pycache__/
 build/
 dist/
 *.egg-info
