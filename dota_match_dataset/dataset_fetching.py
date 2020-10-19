@@ -15,7 +15,7 @@ __all__ = ["fetch_dota_dataset_serial", "fetch_dota_dataset_concurrent"]
 _logger = get_logger()
 
 
-def _fetch_public_matches(api_key: ApiKey, minimum_number_of_matches: int,
+def _fetch_public_matches(open_dota_api: OpenDotaApi, minimum_number_of_matches: int,
                           game_mode: GameMode, lobby_types: List[LobbyType],
                           minimum_match_duration: Seconds, retries: int = 5) -> List[Dict]:
     fetched_matches: List[Dict] = []
@@ -25,7 +25,7 @@ def _fetch_public_matches(api_key: ApiKey, minimum_number_of_matches: int,
 
     while number_of_retrieved_matches <= minimum_number_of_matches:
         try:
-            matches = get_dota_public_match_info(api_key=api_key, less_than_match_id=minimum_retrieved_match_id)
+            matches = open_dota_api.get_random_public_match_info(less_than_match_id=minimum_retrieved_match_id)
             matches = _filter_matches(matches=matches, game_mode=game_mode, lobby_types=lobby_types,
                                       minimum_match_duration=minimum_match_duration)
             fetched_matches += matches
@@ -53,27 +53,27 @@ def _filter_matches(matches: List[Dict], game_mode: GameMode, lobby_types: List[
     return filtered_matches
 
 
-def _submit_parse_request_for_matches(api_key: ApiKey, match_ids: List[MatchId]) -> Dict[JobId, MatchId]:
+def _submit_parse_request_for_matches(open_dota_api: OpenDotaApi, match_ids: List[MatchId]) -> Dict[JobId, MatchId]:
     parsing_job_id_to_match_id: Dict[JobId, MatchId] = dict()
     for mid in match_ids:
         try:
-            parsing_job_id_to_match_id[submit_parse_request_for_match(api_key=api_key, match_id=mid)] = mid
+            parsing_job_id_to_match_id[open_dota_api.submit_parse_request_for_match(match_id=mid)] = mid
             _logger.info(f"Submitted parse request for match [{mid}]")
-        except ParsedMatchCannotBeRetrievedError:
+        except ParsedRequestCannotBeSubmittedError:
             continue
     return parsing_job_id_to_match_id
 
 
-def _get_parsed_data(api_key: ApiKey, parsing_job_id_to_match_id: Dict[JobId, MatchId]) -> List[Dict]:
+def _get_parsed_data(open_dota_api: OpenDotaApi, parsing_job_id_to_match_id: Dict[JobId, MatchId]) -> List[Dict]:
     parsed_data: List[Dict] = []
     available_job_ids = list(parsing_job_id_to_match_id.keys())
     while len(available_job_ids) > 0:
         for i, job_id in enumerate(available_job_ids):
-            if is_parse_request_ready(job_id=job_id, api_key=api_key):
+            if open_dota_api.is_parse_request_ready(job_id=job_id):
                 try:
-                    parsed_data.append(get_parsed_match(match_id=parsing_job_id_to_match_id[job_id], api_key=api_key))
+                    parsed_data.append(open_dota_api.get_parsed_match(match_id=parsing_job_id_to_match_id[job_id]))
                     _logger.debug(f"Fetched the parsed match data for [{parsing_job_id_to_match_id[job_id]}]")
-                except ValueError:
+                except ParsedMatchCannotBeRetrievedError:
                     continue
                 available_job_ids.pop(i)
     return parsed_data
@@ -87,36 +87,37 @@ def _export_parsed_data(parsed_data: List[Dict], path_to_file: Optional[str] = N
     _logger.info(f"Exported dataset to {path_to_file}")
 
 
-def fetch_dota_dataset_serial(api_key: ApiKey, minimum_number_of_matches: int, game_mode: GameMode,
+def fetch_dota_dataset_serial(open_dota_api: OpenDotaApi, minimum_number_of_matches: int, game_mode: GameMode,
                               lobby_types: List[LobbyType], minimum_match_duration: Seconds,
                               path_to_output_file: Optional[str] = None,
                               maximum_number_of_matches: Optional[int] = None):
     matches = _fetch_public_matches(
-        api_key=api_key, minimum_number_of_matches=minimum_number_of_matches, game_mode=game_mode,
+        open_dota_api=open_dota_api, minimum_number_of_matches=minimum_number_of_matches, game_mode=game_mode,
         lobby_types=lobby_types, minimum_match_duration=minimum_match_duration
     )
     if maximum_number_of_matches is not None:
         matches = matches[:maximum_number_of_matches]
 
     parsing_job_id_to_match_id: Dict[JobId, MatchId] = _submit_parse_request_for_matches(
-        match_ids=[m["match_id"] for m in matches], api_key=api_key)
-    parsed_data: List[Dict] = _get_parsed_data(parsing_job_id_to_match_id=parsing_job_id_to_match_id, api_key=api_key)
+        match_ids=[m["match_id"] for m in matches], open_dota_api=open_dota_api)
+    parsed_data: List[Dict] = _get_parsed_data(parsing_job_id_to_match_id=parsing_job_id_to_match_id,
+                                               open_dota_api=open_dota_api)
     _export_parsed_data(parsed_data=parsed_data, path_to_file=path_to_output_file)
 
 
-def fetch_dota_dataset_concurrent(api_key: ApiKey, minimum_number_of_matches: int, game_mode: GameMode,
+def fetch_dota_dataset_concurrent(open_dota_api: OpenDotaApi, minimum_number_of_matches: int, game_mode: GameMode,
                                   lobby_types: List[LobbyType], minimum_match_duration: Seconds,
                                   path_to_output_file: Optional[str] = None,
                                   maximum_number_of_matches: Optional[int] = None):
     matches = _fetch_public_matches(
-        api_key=api_key, minimum_number_of_matches=minimum_number_of_matches, game_mode=game_mode,
+        open_dota_api=open_dota_api, minimum_number_of_matches=minimum_number_of_matches, game_mode=game_mode,
         lobby_types=lobby_types, minimum_match_duration=minimum_match_duration
     )
     if maximum_number_of_matches is not None:
         matches = matches[:maximum_number_of_matches]
 
     executor = ThreadPoolExecutor(max_workers=20)
-    futures = [executor.submit(submit_parse_request_for_match, api_key, m["match_id"]) for m in matches]
+    futures = [executor.submit(open_dota_api.submit_parse_request_for_match, m["match_id"]) for m in matches]
     wait(futures)
 
     parsing_job_id_to_match_id = {}
@@ -126,5 +127,6 @@ def fetch_dota_dataset_concurrent(api_key: ApiKey, minimum_number_of_matches: in
         except Exception as e:
             _logger.error(f"Failed to fetch results for future (match_id = {match['match_id']}): {e}")
 
-    parsed_data: List[Dict] = _get_parsed_data(parsing_job_id_to_match_id=parsing_job_id_to_match_id, api_key=api_key)
+    parsed_data: List[Dict] = _get_parsed_data(parsing_job_id_to_match_id=parsing_job_id_to_match_id,
+                                               open_dota_api=open_dota_api)
     _export_parsed_data(parsed_data=parsed_data, path_to_file=path_to_output_file)
