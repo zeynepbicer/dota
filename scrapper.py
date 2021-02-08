@@ -15,13 +15,16 @@ minimum_match_duration=900
 
 pbar = ProgressBar()
 
-def postJobs(m):
-    pst = requests.post(f'{base_url}/request/{m["match_id"]}?api_key={api_key}')
+
+def post_jobs(match):
+    pst = requests.post(f'{base_url}/request/{match["match_id"]}?api_key={api_key}')
     return pst.json()['job']['jobId']
 
-def getMatches(match):
+
+def get_matches(match):
     response = requests.get(f"{base_url}/matches/{match['match_id']}")
     return response.json()
+
 
 print('Initiate Public Matches GET requests.')
 matches = []
@@ -44,7 +47,7 @@ while len(matches) <= minimum_number_of_matches:
 print(f"Got {len(matches)} match IDs.")
 
 print("Submitting POST requests.")
-job_ids = [dask.delayed(postJobs)(m) for m in matches]
+job_ids = [dask.delayed(post_jobs)(m) for m in matches]
 
 pbar.register()
 job_ids = list(dask.compute(*job_ids))
@@ -60,20 +63,19 @@ while job_ids:
 
 print(f'All Job requests are finished.')
 
-print(f'Requesting {len(matches)} match data.')
+print(f'Requesting data for {len(matches)} matches.')
 
-match_details = [dask.delayed(getMatches)(match) for match in matches]
+match_details = [dask.delayed(get_matches)(match) for match in matches]
     
 pbar.register()
 match_details = list(dask.compute(*match_details))
 
 print('Finished requesting match data.')
-print('Writting to disk.')
 
 with open('match_details.json', 'w') as f:
     json.dump(match_details, f, indent = 2)
 
-print('Done. Wooohooo :D')
+print('Done')
 
 
 
