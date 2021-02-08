@@ -5,7 +5,7 @@ from dask.diagnostics import ProgressBar
 
 
 base_url = "https://api.opendota.com/api"
-api_key = "API_KEY"
+api_key = "API_KEY_HERE"
 
 minimum_number_of_matches = 1000
 game_mode=22
